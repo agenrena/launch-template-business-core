@@ -1,0 +1,9 @@
+{
+  "id": "business_core",
+  "name": "Business Core",
+  "category": "商業基礎",
+  "summary": "一間店、一套 App，從商家後台與 Agent 接入開始。",
+  "description": "包含單店商家資料、團隊權限、獨立登入、顧客服務 Agent、Agenrena 連接與操作紀錄，供商家取得完整原始碼後自行客製。",
+  "features": ["單店商家資料", "擁有者與管理員", "獨立 Django 登入", "顧客服務 MCP", "Agenrena 連接與通知", "操作紀錄"],
+  "scope_note": "不含分店、預約、商品或訂單；Agenrena 功能需另設該 App 的 Vendor 憑證。"
+}
