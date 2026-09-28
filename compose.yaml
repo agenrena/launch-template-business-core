@@ -1,0 +1,68 @@
+name: business-core
+x-backend-env: &backend-env
+  SECRET_KEY: ${SECRET_KEY:?Run python3 scripts/setup.py first}
+  DATABASE_URL: postgresql://business_core:${POSTGRES_PASSWORD:?Run setup first}@db:5432/business_core
+  ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+  CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:8082,http://127.0.0.1:8082}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  TRUST_PROXY: "true"
+  # This App is an Agenrena Vendor; the deployment injects its credentials.
+  # Empty keeps Agenrena off while the rest of the App works normally.
+  AGENRENA_BASE_URL: ${AGENRENA_BASE_URL:-https://api.agenrena.com}
+  AGENRENA_VENDOR_ID: ${AGENRENA_VENDOR_ID:-}
+  AGENRENA_VENDOR_SECRET: ${AGENRENA_VENDOR_SECRET:-}
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: business_core
+      POSTGRES_USER: business_core
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run setup first}
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U business_core -d business_core"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  migrate:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    environment: *backend-env
+    command: [python, manage.py, migrate, --noinput]
+    depends_on:
+      db: { condition: service_healthy }
+  backend:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    environment: *backend-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test:
+        [
+          CMD,
+          python,
+          -c,
+          'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health/")',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  mcp:
+    build: { context: ., dockerfile: mcp/Dockerfile }
+    environment:
+      # BOOKING_API_URL fallback in index.ts also supports the current Runtime contract.
+      CORE_API_URL: http://backend:8000/api/agent-api/
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+    depends_on:
+      backend: { condition: service_healthy }
+    restart: unless-stopped
+  web:
+    build: { context: ., dockerfile: frontend/Dockerfile }
+    ports: ["${BIND_ADDRESS:-127.0.0.1}:${PORT:-8082}:8080"]
+    depends_on:
+      backend: { condition: service_healthy }
+      mcp: { condition: service_started }
+    restart: unless-stopped
+volumes:
+  postgres:
