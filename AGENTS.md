@@ -19,5 +19,6 @@ Read README.md and docs/product-decisions.md before changing scope.
 - Preserve the last active owner. Key revocation and permission edits must take effect on the next request.
 - Do not add booking, ordering, commerce, Firebase, an extension engine, or a merchant Agent admin interface unless requested.
 - No default credentials or copied production data. New installs have one Business, one Agent role and no users/keys/customers/Agenrena connection.
+- Styling: every colour, font, radius and density value lives in frontend/src/theme.css. To rebrand, change --brand (and --brand-fg if button text is unreadable); hovers and soft backgrounds are derived from it. style.css and components use only var(--…); `npm run check:style` (also part of build) rejects colour literals elsewhere. Status colours (--ok, --danger) stay independent of the brand. Dark mode follows the system via the media block in theme.css.
 - Run PostgreSQL tests for backend/auth changes, frontend build for UI, MCP tests for tool changes. Update docs and tool contracts with behavior.
 - Existing sibling booking and the Runtime project must not be modified by work on this template.

@@ -83,7 +83,8 @@ backend/core/views.py           後台／Agent API adapters
 backend/core/migrations/        結構與預設權限資料
 frontend/src/App.tsx            登入與後台導覽
 frontend/src/pages/             各個後台頁面（Agenrena.tsx：Agenrena 連接與 QR code）
-frontend/src/style.css          視覺樣式
+frontend/src/theme.css          品牌色、中性色、字體、圓角、密度與暗色模式（換品牌只改這裡）
+frontend/src/style.css          版面與元件樣式（只用 theme.css 的變數）
 mcp/src/server.ts              顧客服務工具契約
 ```
 

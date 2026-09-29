@@ -29,6 +29,7 @@ Vite 使用 5190，代理 API 到 8042、MCP 到 8767。可用 CORE_DEV_API / CO
 - 新增角色：人的 HUMAN_PERMISSIONS 與 Membership choices/constraint；Agent 則改 AgentRole/AgentPermission 資料。兩者不要混用。
 - 首次預設在 0002_defaults migration，只跑一次；不要每次啟動重設商家已修改的角色資料。
 - 更新業務資料和成功操作紀錄在同一個 transaction。不要將完整輸入直接放入 audit.detail。
+- 更換外觀：只改 `frontend/src/theme.css`。換品牌色改 `--brand`（淺色品牌色時把 `--brand-fg` 改成深色），淺底、hover、選取背景會自動算出；字體、圓角、列高也在同一檔。暗色模式在同檔的 `prefers-color-scheme` 區塊，不需要時整段刪除。`style.css` 與元件只能用 `var(--…)`，`npm run check:style`（build 也會跑）會擋下寫死的顏色。
 
 ```sh
 .venv/bin/python backend/manage.py test core.tests --noinput
