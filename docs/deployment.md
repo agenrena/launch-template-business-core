@@ -1,10 +1,16 @@
 # 部署
 
-## 獨立 Compose
+## 這台電腦（預設）
 
-見 README 的 setup / compose / create_owner。所有資料庫與 backend/MCP 埠都在 Compose 私有網路，只有 web 對外；預設綁定 127.0.0.1:8082，避免與 Booking 8080、Runtime 5188 混淆。
+見 README：`start.command`／`start.bat` 執行 `scripts/start.py`，只需要 uv 與 Node.js 22.12+。Django 以 waitress 直接提供 API 與建置好的畫面（沒有 nginx），資料是 `data/db.sqlite3`（WAL；寫入交易一開始就取得鎖，同一時間只有一個寫入）。預設只聽 127.0.0.1:8082；`LOCAL_APP=true` 由啟動程式設定，打開本機建立第一位擁有者與 stdio 的 MCP 設定說明。顧客服務 Agent 在同一台電腦以 stdio 啟動 MCP，App 不需要對外網址。
 
-正式環境設定專用網域、HTTPS、ALLOWED_HOSTS、CSRF_TRUSTED_ORIGINS、COOKIE_SECURE=true。使用能覆寫 X-Forwarded-Proto 的可信反向代理；不要將私有 backend 直接公開。持久化 PostgreSQL 並安排備份；此模板不自行實作 Runtime 的備份／復原管理。
+這台電腦要開著、App 要在執行，Agent 才能回答顧客；開機自動啟動目前沒有內建，由商家或 Agent 依作業系統設定。備份是停止後複製整個資料夾。
+
+## 伺服器：Docker Compose
+
+需要顧客直接打開 App 的網頁、或需要隨時從外面連線時使用。`python3 scripts/setup.py` 產生 `.env`，`docker compose up --build -d`，再以 `docker compose exec backend python manage.py create_owner --username owner` 私下設定第一位擁有者的密碼。所有資料庫與 backend/MCP 埠都在 Compose 私有網路，只有 web 對外；預設綁定 127.0.0.1:8082，避免與 Booking 8080、Runtime 5188 混淆。
+
+正式環境設定專用網域、HTTPS、ALLOWED_HOSTS、CSRF_TRUSTED_ORIGINS、COOKIE_SECURE=true。使用能覆寫 X-Forwarded-Proto 的可信反向代理；不要將私有 backend 直接公開。持久化 PostgreSQL 並安排備份；此模板不自行實作 Runtime 的備份／復原管理。伺服器路線不設定 `LOCAL_APP`，網頁上的首次建立帳號不會開放。
 
 ## Agenrena Runtime
 

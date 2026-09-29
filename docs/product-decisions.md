@@ -6,7 +6,7 @@
 2. 核心範圍：Business（這間店）、使用者、登入、基本後台、Agent 接入、Agenrena 連接、操作紀錄。
 3. **一間店，一套 App。** Business 就是這間店，沒有 Location／分店結構，也不是 multi-tenant。連鎖或加盟時每間店各自部署一套 App（2026-09-28 取代原本的「一個 Business 多個 Location」）。
 4. 登入預設獨立 Django 帳號密碼。沒有 Agenrena SSO，不共用 Agenrena Firebase；商家自行客製其他登入方式。
-5. 人預設 owner / admin。第一位 owner 私下設定密碼或由 Runtime 提供隨機初始憑證。禁止移除最後一位有效 owner。
+5. 人預設 owner / admin。第一位 owner 在本機由這台電腦的網頁建立（見 21），在伺服器上私下設定密碼或由 Runtime 提供隨機初始憑證。禁止移除最後一位有效 owner。
 6. Coding Agent 修改程式與處理部署；Business Agent 預設面對顧客，並非管理後台的營運代理。
 7. Agent 有獨立權限表，預設一個 customer_service 權限組。各功能明確檢查操作與資料範圍，後續角色由商家自行修改。
 8. Agenrena 提供固定 customer_ref。App 以可空且有值時唯一的 agenrena_customer_ref 對應內部顧客身分 UUID（見 17）。手動顧客可沒有 reference，不按姓名／電話自動合併。
@@ -26,3 +26,9 @@
 17. **顧客關係屬於這間店。** `customer_ref` 是 Agenrena 以店發給的 `bcr_` 值；同一個人在另一間店（另一套 App）是另一段關係，不跨 App 合併。
 18. **通知是核心能力，事件由業務模板決定。** 核心提供 `notify_customer`，在交易提交後送進顧客與這間店的對話；送達失敗不影響業務資料，店家撤銷授權後自動停止。核心本身不主動發訊息。
 19. **不在這一版：** identity link（有簽章的顧客身分連結）、Runtime 自動建立 Vendor 與輪替、接收顧客訊息（inbound webhook）、品牌層跨店識別與合併報表。
+
+## 預設在店家自己的電腦上（2026-09-30）
+
+20. **Agent 由商家帶來、跑在商家這一端**；Agenrena 是帶著自己 Agent 進來的社群，不代管 Agent，也不回呼 App。所以 App 不需要對外網址：Agent 在同一台電腦以 stdio 使用 MCP，通知由 App 主動連出 Agenrena。
+21. **預設本機執行，伺服器是選項。** 一間店 = 一個資料夾：只需要 uv 與 Node.js，SQLite 資料在 `data/`，點兩下 `start.command`／`start.bat` 就開始，第一次在網頁上建立擁有者。拿掉的是 Docker 與資料庫伺服器（最容易卡住不懂軟體的人），保留 Python + Node（Agent 能自己裝，而且改前端本來就需要 Node）。需要顧客直接開網頁或隨時遠端連線的店（例如點餐）再用 Docker Compose + PostgreSQL 放到伺服器；同一份程式碼。
+22. 同時支援 SQLite 與 PostgreSQL，只用兩者都有的功能。「先檢查再寫入」靠 services 裡的交易與鎖，不靠 PostgreSQL 專屬的資料庫限制。

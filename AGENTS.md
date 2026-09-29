@@ -7,7 +7,9 @@ Read README.md and docs/product-decisions.md before changing scope.
 - The store is one Agenrena Business Profile (a direction, not enforced on Agenrena).
 - The App is the Agenrena Vendor. Vendor credentials come only from env (AGENRENA_VENDOR_ID/SECRET); never commit, log, return or pass them to the frontend/MCP. Unset means Agenrena is off and everything else works.
 - At most one grant (AgenrenaConnection singleton, messages:send, owner-only connect/disconnect).
-- Django/PostgreSQL + static React + optional customer-facing business MCP.
+- Django + static React + optional customer-facing business MCP. Local is the default: scripts/start.py (start.command / start.bat) runs everything on this computer with SQLite in data/, no Docker, no database server. DATABASE_URL switches to PostgreSQL for hosting (Compose/Runtime). Keep both working; use only features both databases support.
+- LOCAL_APP (set by start.py) opens first-owner setup in the browser only from loopback and only while no active owner exists, and makes the console show the stdio MCP config. Hosted installs never set it.
+- The store's Agent is brought by the merchant and runs on their side; locally it launches the MCP over stdio. Agenrena never calls into the App.
 - Human roles: owner and admin. Agent permissions: separate database tables, one seeded customer_service role.
 - Keep authorization and business writes in core/permissions.py and core/services.py. Console and MCP must use them.
 - CustomerIdentity is a minimal identity link, not a customer-management product. Domain models reference its internal UUID.
@@ -20,5 +22,5 @@ Read README.md and docs/product-decisions.md before changing scope.
 - Do not add booking, ordering, commerce, Firebase, an extension engine, or a merchant Agent admin interface unless requested.
 - No default credentials or copied production data. New installs have one Business, one Agent role and no users/keys/customers/Agenrena connection.
 - Styling: every colour, font, radius and density value lives in frontend/src/theme.css. To rebrand, change --brand (and --brand-fg if button text is unreadable); hovers and soft backgrounds are derived from it. style.css and components use only var(--…); `npm run check:style` (also part of build) rejects colour literals elsewhere. Status colours (--ok, --danger) stay independent of the brand. Dark mode follows the system via the media block in theme.css.
-- Run PostgreSQL tests for backend/auth changes, frontend build for UI, MCP tests for tool changes. Update docs and tool contracts with behavior.
+- Run backend tests on SQLite and PostgreSQL for backend/auth changes, frontend build for UI, MCP tests for tool changes, and ./start.command --no-browser for startup changes. Update docs and tool contracts with behavior.
 - Existing sibling booking and the Runtime project must not be modified by work on this template.

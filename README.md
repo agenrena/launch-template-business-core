@@ -17,27 +17,27 @@ Agenrena 商業 App 的共同起點。它與 `booking` 同層，不包含預約�
 
 Base 用清楚的程式結構示範如何擴充；權限組可由商家的 Coding Agent 透過程式／migration 增修，後台只顯示它們，沒有通用權限編輯器。
 
-## 本機啟動
+## 在這台電腦上開始（預設）
 
-需要 Docker Compose、Python 3。開發編譯使用 Node 22.12+、Python 3.13、PostgreSQL。
+一間店 = 一個資料夾。不需要 Docker 或資料庫伺服器，只需要 [uv](https://docs.astral.sh/uv/) 與 Node.js 22.12+；沒有的話請 Agent 安裝。
 
-```sh
-python3 scripts/setup.py
-docker compose up --build -d
-docker compose exec backend python manage.py create_owner --username owner
-```
+- macOS：點兩下 `start.command`（或在終端機執行 `./start.command`）
+- Windows：點兩下 `start.bat`
 
-最後一步私下輸入自己的密碼，不建立預設密碼。開啟 **http://localhost:8082**。
+第一次會自動產生這台電腦專用的 `.env`、安裝套件、建置畫面並建立資料庫，完成後打開 **http://127.0.0.1:8082**，在畫面上建立擁有者帳號（只能在這台電腦上建立，且只有第一次）。之後再執行只會直接開啟；程式被 Agent 改過時會自動重新建置。按 Ctrl+C 或關掉視窗就停止。
 
-首次登入先填商家資料（名稱、地址、電話），再視需要新增管理員、Agent 連接，以及連接 Agenrena。沒有預設使用者、Agent 金鑰或顧客資料；`setup.py` 只產生部署用隨機秘密且拒絕覆蓋 `.env`。
+接著填商家資料（名稱、地址、電話），再視需要新增管理員、Agent 連接，以及連接 Agenrena。沒有預設使用者、Agent 金鑰或顧客資料。
 
-忘記密碼時，由部署管理者執行 `docker compose exec backend python manage.py changepassword <username>`。擁有者可從後台新增帳號；重設現有密碼目前使用此管理指令。
+**資料都在 `data/`**（SQLite）。備份或換電腦：停止 App 後複製整個專案資料夾（含 `data/` 與 `.env`）。`data/` 與 `.env` 不進 Git。忘記密碼時執行 `./start.command manage changepassword <帳號>`（Windows：`start.bat manage changepassword <帳號>`），或請 Agent 代為執行。
 
-`docker compose down` 保留資料；`down -v` 會刪除資料庫 volume。
+需要顧客直接開網頁、或要隨時從外面連線時，改用 Docker Compose + PostgreSQL 放到伺服器上，見 [部署](docs/deployment.md)。同一份程式碼，以 `DATABASE_URL` 決定用哪種資料庫。
 
 ## 顧客服務 MCP
 
-後台「Agent 連接」建立金鑰，填入 `http://localhost:8082/mcp` 與 `Authorization: Bearer abc_…`。正式對外須使用 HTTPS。金鑰只顯示一次。
+這間店的 Agent 由商家自己帶來、跑在商家這一端。後台「Agent 連接」建立金鑰（只顯示一次）：
+
+- **Agent 在這台電腦上（預設）**：頁面直接給一段 `mcpServers` 設定（`node mcp/dist/index.js --stdio`，金鑰已填好），交給 Agent 即可，不需要對外開放任何網址。
+- **App 放在伺服器上**：填入 `https://<網域>/mcp` 與 `Authorization: Bearer abc_…`，正式對外須使用 HTTPS。
 
 | Tool | 預設能力 |
 |---|---|
@@ -68,13 +68,15 @@ docker compose exec backend python manage.py create_owner --username owner
 
 `business_core` 是共同起點；`booking` 是可選業務模板。目前建立為獨立同層專案，**未改造既有 Booking，也沒有把它宣稱為已繼承此核心**。
 
-`runtime.json`、Dockerfiles、`/health/` 和 `runtime_bootstrap` 符合現有 Runtime 的部署形狀。MCP 支援 `CORE_API_URL`，另接受現有 provider 的 `BOOKING_API_URL` 相容名稱。Bootstrap 只在沒有有效擁有者時建立初始帳號，拒絕覆蓋現有帳號。提供部署接法不代表已通過 Runtime 真實部署驗證。
+伺服器路線：`runtime.json`、Dockerfiles、`/health/` 和 `runtime_bootstrap` 符合現有 Runtime 的部署形狀。MCP 支援 `CORE_API_URL`，另接受現有 provider 的 `BOOKING_API_URL` 相容名稱。Bootstrap 只在沒有有效擁有者時建立初始帳號，拒絕覆蓋現有帳號。提供部署接法不代表已通過 Runtime 真實部署驗證。
 
 Base 不會自動同步更新到各商家；各商家自己的 Coding Agent 評估並整合需要的更新。登入可以自行改成商家自己的 Firebase 等方式，核心不附帶這些整合。
 
 ## 修改入口
 
 ```text
+scripts/start.py                在這台電腦上執行（start.command / start.bat 呼叫它）
+backend/config/settings.py      SQLite（預設）或 PostgreSQL（DATABASE_URL）
 backend/core/models.py          共同資料模型
 backend/core/permissions.py     人的權限與 Agent 授權／顧客範圍
 backend/core/services.py        共用操作、稽核、Agenrena 連接與 notify_customer

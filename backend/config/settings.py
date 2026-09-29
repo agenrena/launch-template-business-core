@@ -21,7 +21,6 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
-    "django.contrib.postgres",
     "rest_framework",
     "core",
 ]
@@ -41,19 +40,42 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
-url = urlparse(os.getenv("DATABASE_URL", "postgresql://localhost:5432/business_core"))
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": unquote(url.path.lstrip("/")),
-        "USER": unquote(url.username or ""),
-        "PASSWORD": unquote(url.password or ""),
-        "HOST": url.hostname or "",
-        "PORT": url.port or 5432,
+# Local (scripts/start.py): this store's data is one folder, SQLite by default.
+# Hosted (Compose/Runtime): DATABASE_URL points at PostgreSQL.
+LOCAL_APP = os.getenv("LOCAL_APP", "false").lower() == "true"
+DATA_DIR = Path(os.getenv("DATA_DIR") or BASE_DIR.parent / "data")
+FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
+MCP_ENTRY = BASE_DIR.parent / "mcp" / "dist" / "index.js"
+if os.getenv("DATABASE_URL"):
+    url = urlparse(os.environ["DATABASE_URL"])
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": unquote(url.path.lstrip("/")),
+            "USER": unquote(url.username or ""),
+            "PASSWORD": unquote(url.password or ""),
+            "HOST": url.hostname or "",
+            "PORT": url.port or 5432,
+        }
     }
-}
-if os.getenv("DB_SSLMODE"):
-    DATABASES["default"]["OPTIONS"] = {"sslmode": os.environ["DB_SSLMODE"]}
+    if os.getenv("DB_SSLMODE"):
+        DATABASES["default"]["OPTIONS"] = {"sslmode": os.environ["DB_SSLMODE"]}
+else:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": DATA_DIR / "db.sqlite3",
+            "OPTIONS": {
+                # One writer at a time: a write transaction takes the lock when it
+                # starts, so check-then-write in services cannot interleave.
+                "transaction_mode": "IMMEDIATE",
+                "timeout": 20,
+                "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
+            },
+            "TEST": {"NAME": DATA_DIR / "test.sqlite3"},
+        }
+    }
 USE_TZ = True
 TIME_ZONE = "UTC"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

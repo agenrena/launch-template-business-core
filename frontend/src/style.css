@@ -628,6 +628,13 @@ footer {
   margin: 0.4rem 0;
   color: var(--muted);
 }
+.snippet {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: pre;
+}
 .role-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

@@ -1,5 +1,25 @@
 # 驗證紀錄
 
+## 2026-09-30：預設在這台電腦上執行
+
+在 scratchpad 複製一份乾淨專案（沒有 `.env`、`node_modules`、建置結果或資料），以只有 `/usr/bin:/bin` 的 PATH 執行 `./start.command --no-browser`；Agenrena 未設定，沒有連到真實平台。
+
+| 檢查 | 結果 |
+|---|---|
+| 首次啟動 | wrapper 自己找到 uv 與 nvm 裡符合 `.nvmrc` 的 Node（預設 alias 是 22.11，低於 22.12，改用 `nvm use`），產生 `.env`、安裝與建置前端和 MCP、建立 `data/db.sqlite3`（WAL），在 127.0.0.1:8082 提供畫面與 API |
+| 首次建立擁有者 | 真實 HTTP（含 CSRF 與 Origin）：session 回報可建立 → 建立後直接登入 → 第二次建立被拒（403）；另以 Chrome 截圖確認建立畫面、建立後進入工作空間 |
+| 本機 Agent | 用後台給的 `mcpServers` 設定以 stdio 啟動 MCP：tools/list、get_business、update/get_customer_profile 都成功 |
+| Agent 連接頁 | 截圖確認 stdio 設定段落；建立金鑰後設定已填入金鑰 |
+| 重新啟動 | 執行中再啟動只提示已在執行；停止後再啟動不重新安裝或建置，資料與登入都在 |
+| `manage` | `./start.command manage shell -c …` 讀得到這間店的資料 |
+| Django | 36 項測試在 SQLite 與 PostgreSQL 17 都通過（新增：本機建立擁有者只限一次與本機、伺服器模式與非本機拒絕、MCP 連接資訊、提供建置畫面與拒絕跳出資料夾的路徑）；makemigrations --check 通過 |
+| Frontend / MCP | 正式建置通過（含 check:style）；MCP 6 項測試通過 |
+| 程式整理 | Ruff、Prettier（修改過的檔案） |
+| 伺服器也改用 waitress | 拿掉 gunicorn。以 Dockerfile 的同一個 `waitress-serve` 指令接 PostgreSQL 17：runtime_bootstrap、health、登入、網頁建立擁有者不開放；帶 `X-Forwarded-Proto: https` 時 MCP 網址為 `https://`。對照組不加 `--no-clear-untrusted-proxy-headers` 時 waitress 會刪掉這個標頭，網址變回 `http://`，所以此參數必要 |
+| Docker Compose | 乾淨副本 `docker compose up --build`（Docker 24）：四個 image 建置成功，backend 由 waitress 服務且健康檢查通過。經 nginx：畫面、`/health/`、runtime_bootstrap、登入、修改商家資料、網頁建立擁有者不開放（403）、MCP 網址在 HTTPS proxy 後為 `https://`、Streamable HTTP MCP（initialize、tools/list、顧客範圍讀寫與重試）、撤銷金鑰後 401。測完 `down -v` 刪除 |
+
+尚未執行：Windows 上的 `start.bat`、macOS 在 Finder 點兩下 `start.command`（下載來的檔案可能被 Gatekeeper 擋下）、與真實 Agenrena 的授權與通知。
+
 ## 2026-09-28：一間店一套 App，Agenrena 連接
 
 在 scratchpad 的獨立 venv 與臨時 PostgreSQL 14 叢集執行，不讀寫既有 Booking、Runtime 或 Agenrena 資料；Agenrena 以模擬的 HTTP 回應代替，沒有連到真實平台。當天先做過以 Location 為單位的版本，同日決定拿掉 Location，以下為最終版本的結果；沒有既有資料，initial migration 直接重寫。

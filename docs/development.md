@@ -4,12 +4,14 @@
 
 ## 開發環境
 
-Python 3.13、Node 22.12+、PostgreSQL 14+。不使用 SQLite 代替 PostgreSQL 測試。
+Python 3.13、Node 22.12+。沒有 `DATABASE_URL` 時用 SQLite（`data/`，或 `DATA_DIR` 指定的資料夾）；設定後用 PostgreSQL 14+。兩種都是正式支援的路線，後端測試兩種都要過。
+
+最直接的方式是 `./start.command`：它就是商家實際執行的樣子，改完程式重新執行會自動重建。需要前端即時重載時：
 
 ```sh
 python3.13 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
-# 私下設定 SECRET_KEY、DATABASE_URL；後端不自動讀取 .env。
+# 私下設定 SECRET_KEY；後端不自動讀取 .env（start.py 會）。
 .venv/bin/python backend/manage.py migrate
 .venv/bin/python backend/manage.py create_owner --username owner
 .venv/bin/python backend/manage.py runserver 127.0.0.1:8042
@@ -22,7 +24,7 @@ Vite 使用 5190，代理 API 到 8042、MCP 到 8767。可用 CORE_DEV_API / CO
 ## 修改入口與驗證
 
 - 新增共同欄位：models → migration → serializer → service → UI。
-- 新增顧客工具：AgentPermission/Role migration → permissions/services → Agent API → MCP schema/tool description → PostgreSQL與 MCP 測試。
+- 新增顧客工具：AgentPermission/Role migration → permissions/services → Agent API → MCP schema/tool description → 後端與 MCP 測試。
 - 新增顧客資料讀寫：先取得 scoped_customer，再以其內部 UUID 限制所有查詢。測試 A 顧客不能讀寫 B 的資料。
 - 新增顧客通知：決定事件與卡片內容，在業務寫入的交易裡呼叫 notify_customer，`message_id` 對同一事實保持穩定。測試用 `patch("core.agenrena._request", …)` 模擬平台，參考 core/tests/test_agenrena.py；不要在測試中連到真實 Agenrena。
 - 更換登入：session/login/logout、authentication 與前端登入頁；保留 CSRF、Membership 授權及操作紀錄。Firebase 是商家可自行實作的客製，沒有預先整合。
@@ -31,8 +33,11 @@ Vite 使用 5190，代理 API 到 8042、MCP 到 8767。可用 CORE_DEV_API / CO
 - 更新業務資料和成功操作紀錄在同一個 transaction。不要將完整輸入直接放入 audit.detail。
 - 更換外觀：只改 `frontend/src/theme.css`。換品牌色改 `--brand`（淺色品牌色時把 `--brand-fg` 改成深色），淺底、hover、選取背景會自動算出；字體、圓角、列高也在同一檔。暗色模式在同檔的 `prefers-color-scheme` 區塊，不需要時整段刪除。`style.css` 與元件只能用 `var(--…)`，`npm run check:style`（build 也會跑）會擋下寫死的顏色。
 
+- 資料庫：只用 SQLite 與 PostgreSQL 都有的功能（不要用 `django.contrib.postgres`）。會「先檢查再寫入」的規則放在 services 的 `transaction.atomic` 裡並先 `select_for_update` 鎖住相關資料列：PostgreSQL 靠這個鎖排隊，SQLite 靠寫入交易的 IMMEDIATE 模式排隊。
+
 ```sh
-.venv/bin/python backend/manage.py test core.tests --noinput
+.venv/bin/python backend/manage.py test core.tests --noinput                  # SQLite
+DATABASE_URL=postgresql://… .venv/bin/python backend/manage.py test core.tests --noinput
 .venv/bin/python backend/manage.py makemigrations --check --dry-run
 npm run build --prefix frontend
 npm test --prefix mcp
@@ -42,7 +47,7 @@ Role/Permission 是具體權限表，不是通用規則引擎。沒有分店結�
 
 ## 真實 HTTP 驗證
 
-前端與 MCP 完成 npm ci / build 後，設定 DATABASE_URL 指向有 CREATEDB 權限的**開發用** PostgreSQL，再執行：
+本機路線以 `./start.command --no-browser` 實際啟動驗證。伺服器路線：前端與 MCP 完成 npm ci / build 後，設定 DATABASE_URL 指向有 CREATEDB 權限的**開發用** PostgreSQL，再執行：
 
 ```sh
 .venv/bin/python scripts/http_smoke.py
