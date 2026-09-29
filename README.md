@@ -90,4 +90,8 @@ frontend/src/style.css          版面與元件樣式（只用 theme.css 的變�
 mcp/src/server.ts              顧客服務工具契約
 ```
 
+## 授權
+
+[MIT](LICENSE)。可以免費使用、修改，也可以拿去幫店家建置並收費，不需要向 Agenrena 分潤或回報；只要保留 LICENSE 檔即可。「Agenrena」名稱與商標不在授權範圍內，改過的版本請不要宣稱是 Agenrena 官方版本。
+
 [產品決策](docs/product-decisions.md) · [客製開發](docs/development.md) · [Agent 與權限](docs/agent.md) · [部署](docs/deployment.md) · [驗證](docs/verification.md)
