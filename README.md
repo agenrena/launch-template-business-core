@@ -1,6 +1,6 @@
 # Business Core
 
-Agenrena 商業 App 的共同起點。它與 `booking` 同層，不包含預約、商品、訂單或會員規則。
+Agenrena 商業 App 的共同起點。它與業務模板 `booking`、`repair`、`order` 同層，本身不包含預約、送修、訂單或會員規則。
 
 商家取得完整原始碼，讓自己的 Coding Agent 客製、測試與維護。人使用後台管理；Business Agent 透過 MCP 面對顧客。Runtime 的部署 MCP 是另一個介面。
 
@@ -66,7 +66,7 @@ Base 用清楚的程式結構示範如何擴充；權限組可由商家的 Codin
 
 ## 與業務模板／Runtime 的關係
 
-`business_core` 是共同起點；`booking` 是可選業務模板。目前建立為獨立同層專案，**未改造既有 Booking，也沒有把它宣稱為已繼承此核心**。
+`business_core` 是共同起點。業務模板各自是「這個核心的完整副本 + 業務」：`booking`（預約）、`repair`（送修進度）、`order`（點餐，只放伺服器）。它們同層、各自獨立執行，執行期不依賴這裡；核心更新由維護者比對後整合到各副本，差異記在各模板的 `docs/core-copy.md`。
 
 伺服器路線：`runtime.json`、Dockerfiles、`/health/` 和 `runtime_bootstrap` 符合現有 Runtime 的部署形狀。MCP 支援 `CORE_API_URL`，另接受現有 provider 的 `BOOKING_API_URL` 相容名稱。Bootstrap 只在沒有有效擁有者時建立初始帳號，拒絕覆蓋現有帳號。提供部署接法不代表已通過 Runtime 真實部署驗證。
 
