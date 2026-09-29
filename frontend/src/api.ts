@@ -76,6 +76,7 @@ export type McpInfo =
   | { transport: "http"; url: string }
   | {
       transport: "stdio";
+      name: string;
       command: string;
       args: string[];
       env: Record<string, string>;

@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db import IntegrityError, close_old_connections, transaction
@@ -420,6 +421,7 @@ class LocalAppTests(TestCase):
         with override_settings(LOCAL_APP=True):
             local = client.get("/api/console/mcp/").json()
         self.assertEqual(local["transport"], "stdio")
+        self.assertEqual(local["name"], settings.MCP_NAME)
         self.assertEqual(local["args"][-1], "--stdio")
         self.assertEqual(local["env"], {"CORE_API_URL": "http://testserver/api/agent-api/"})
         self.assertNotIn("CORE_AGENT_KEY", local["env"])

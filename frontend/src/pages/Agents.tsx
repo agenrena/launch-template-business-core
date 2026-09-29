@@ -20,7 +20,7 @@ function stdioConfig(
     args: mcp.args,
     env: { ...mcp.env, [mcp.key_env]: key },
   };
-  return JSON.stringify({ mcpServers: { "business-core": server } }, null, 2);
+  return JSON.stringify({ mcpServers: { [mcp.name]: server } }, null, 2);
 }
 
 function Snippet({ value }: { value: string }) {

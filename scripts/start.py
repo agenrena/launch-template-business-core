@@ -6,7 +6,7 @@ Started by start.command (macOS/Linux) or start.bat (Windows), which run:
         python scripts/start.py [--no-browser]
 
 Creates .env on first run, builds the frontend and MCP when their sources changed,
-migrates data/db.sqlite3 and serves http://127.0.0.1:8082 until Ctrl+C.
+migrates data/db.sqlite3 and serves http://127.0.0.1:<PORT from .env> until Ctrl+C.
 
 `start.command manage <command> ...` runs a Django management command with this
 install's settings, e.g. `./start.command manage changepassword owner`.

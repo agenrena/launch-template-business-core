@@ -258,6 +258,7 @@ class McpView(APIView):
             return Response(
                 {
                     "transport": "stdio",
+                    "name": settings.MCP_NAME,
                     "command": "node",
                     "args": [str(settings.MCP_ENTRY), "--stdio"],
                     "env": {"CORE_API_URL": request.build_absolute_uri("/api/agent-api/")},

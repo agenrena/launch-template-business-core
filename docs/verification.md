@@ -2,6 +2,8 @@
 
 ## 2026-09-30：預設在這台電腦上執行
 
+後續（同步 booking 時）：MCP 設定裡的伺服器名稱改由 `settings.MCP_NAME` 提供（核心 `business-core`、booking `booking`），讓 `core/views.py` 與 `pages/Agents.tsx` 在各模板保持相同；36 項測試在 SQLite 與 PostgreSQL 重跑通過，前端建置通過。
+
 在 scratchpad 複製一份乾淨專案（沒有 `.env`、`node_modules`、建置結果或資料），以只有 `/usr/bin:/bin` 的 PATH 執行 `./start.command --no-browser`；Agenrena 未設定，沒有連到真實平台。
 
 | 檢查 | 結果 |

@@ -46,6 +46,7 @@ LOCAL_APP = os.getenv("LOCAL_APP", "false").lower() == "true"
 DATA_DIR = Path(os.getenv("DATA_DIR") or BASE_DIR.parent / "data")
 FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
 MCP_ENTRY = BASE_DIR.parent / "mcp" / "dist" / "index.js"
+MCP_NAME = "business-core"  # server name in the mcpServers config shown to the Agent
 if os.getenv("DATABASE_URL"):
     url = urlparse(os.environ["DATABASE_URL"])
     DATABASES = {
