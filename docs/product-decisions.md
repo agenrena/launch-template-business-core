@@ -32,3 +32,7 @@
 20. **Agent 由商家帶來、跑在商家這一端**；Agenrena 是帶著自己 Agent 進來的社群，不代管 Agent，也不回呼 App。所以 App 不需要對外網址：Agent 在同一台電腦以 stdio 使用 MCP，通知由 App 主動連出 Agenrena。
 21. **預設本機執行，伺服器是選項。** 一間店 = 一個資料夾：只需要 uv 與 Node.js，SQLite 資料在 `data/`，點兩下 `start.command`／`start.bat` 就開始，第一次在網頁上建立擁有者。拿掉的是 Docker 與資料庫伺服器（最容易卡住不懂軟體的人），保留 Python + Node（Agent 能自己裝，而且改前端本來就需要 Node）。需要顧客直接開網頁或隨時遠端連線的店（例如點餐）再用 Docker Compose + PostgreSQL 放到伺服器；同一份程式碼。
 22. 同時支援 SQLite 與 PostgreSQL，只用兩者都有的功能。「先檢查再寫入」靠 services 裡的交易與鎖，不靠 PostgreSQL 專屬的資料庫限制。
+
+## 軟體名稱（2026-10-02）
+
+登入頁、後台左上角和瀏覽器分頁使用商家的軟體名稱；直接從 GitHub 取得時預設為 `Core`。Agenrena Business 下載會寫入 `backend/app-config.json` 的 `software_name`（最多 120 字），首次建立商家資料時保存至資料庫。檔案缺少、空白或無效時使用模板預設值。後台「商家資料」可改名，之後啟動不會用下載設定覆蓋。軟體名稱與商家名稱分開，也不會同步改動 Agenrena 上的 App/Vendor 名稱。頁底的 `Powered by Agenrena` 可自行移除，不影響功能。此版本只針對全新初始化，沒有舊資料搬移流程。

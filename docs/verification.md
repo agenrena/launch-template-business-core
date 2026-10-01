@@ -58,3 +58,11 @@
 尚未執行：瀏覽器視覺／互動驗收、完整 Docker image build 與 Compose 啟動、實際 Runtime 部署、AWS、Agenrena 真實聊天室端到端整合。不能把 API 成功當成畫面驗收。
 
 交付沒有 .env、預設帳密、Agent keys、顧客資料、node_modules 或 .venv。HTTP 測試使用的隨機帳密只存在測試程序中；測試資料庫與程序均在 finally 清理。
+
+## 2026-10-02：商家自訂軟體名稱
+
+- 全新資料庫的 core 與業務測試：SQLite、隔離 PostgreSQL 17 各 38 項通過；makemigrations --check --dry-run 通過。
+- 前端 TypeScript、check:style 與 Vite build 通過。
+- 命名測試涵蓋無設定／空白／無效設定的預設值、中文與特殊字元、初始化後不覆蓋、登入前讀取、登入後改名與未授權拒絕。
+- Agenrena 下載 ZIP 的純 Python 測試 9 項通過；以產出的設定實際初始化 Core 臨時 SQLite，確認採用下載名稱。
+- 瀏覽器視覺與互動驗收未完成：電腦操作工具未獲 Chrome 權限。Agenrena 後端完整 Django 測試依其 AGENTS.md 須由使用者於既有環境執行；未執行真實 S3／下載網站端到端驗證，也尚未發布模板。
