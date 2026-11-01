@@ -21,6 +21,7 @@ from core.services import deliver_to_customer, notify_customer, update_business
 from .test_core import PASSWORD, ref
 
 A = ref(0xA)
+CHAT_URL = "https://agenrena.example/s/i/Ab12Cd34/chat"
 VENDOR = {"AGENRENA_VENDOR_ID": "vendor-1", "AGENRENA_VENDOR_SECRET": "bvs_private_vendor_secret"}
 CARD = {
     "status": "success",
@@ -66,8 +67,13 @@ class FakeAgenrena:
             return 200, {"id": "message"}
         return 404, {"error": {"code": "NOT_FOUND"}}
 
-    def completed(self, grant_id="grant-A", name="大安店"):
-        self.session = {"status": "completed", "grant_id": grant_id, "business_name": name}
+    def completed(self, grant_id="grant-A", name="大安店", chat_url=CHAT_URL):
+        self.session = {
+            "status": "completed",
+            "grant_id": grant_id,
+            "business_name": name,
+            "chat_url": chat_url,
+        }
 
     def paths(self, method=None):
         return [c["path"] for c in self.calls if method in (None, c["method"])]
@@ -109,29 +115,70 @@ class AgenrenaTests(TestCase):
         return (client or self.owner_client).get("/api/console/agenrena/").json()
 
     def test_store_connects_its_business_profile(self):
+        self.assertIsNone(self.overview()["chat_url"])
         start = self.post("connect")
         self.assertEqual(start.status_code, 201)
         self.assertEqual(start["Cache-Control"], "no-store")
         self.assertIn("authorize_url", start.data)
         self.assertEqual(self.platform.calls[-1]["body"], {"scopes": ["messages:send"]})
         self.assertEqual(self.post("check").data["status"], "pending")
+        self.assertEqual(AgenrenaConnection.current().chat_url, "")
+        self.assertIsNone(self.overview()["chat_url"])
         self.platform.completed()
         done = self.post("check")
         self.assertEqual(done.data["status"], "connected")
         self.assertEqual(done.data["business_name"], "大安店")
+        self.assertEqual(done.data["chat_url"], CHAT_URL)
+        self.assertEqual(AgenrenaConnection.current().chat_url, CHAT_URL)
         overview = self.overview()
         self.assertTrue(overview["configured"])
         self.assertEqual(overview["status"], "connected")
         self.assertEqual(overview["business_name"], "大安店")
+        self.assertEqual(overview["chat_url"], CHAT_URL)
+        self.assertEqual(self.overview(self.admin_client)["chat_url"], CHAT_URL)
         # The consent link is a bearer credential: never stored or audited.
         self.assertNotIn("bct_once", str(list(AgenrenaConnection.objects.values())))
         self.assertNotIn("bct_once", str(list(AuditEvent.objects.values())))
         self.assertTrue(AuditEvent.objects.filter(action="agenrena.connected").exists())
 
+    def test_completed_consent_requires_a_valid_chat_url(self):
+        self.post("connect")
+        session_id = AgenrenaConnection.current().session_id
+        for value in [
+            None,
+            "",
+            123,
+            {},
+            "/s/i/Ab12Cd34/chat",
+            "javascript:alert(1)",
+            "ftp://agenrena.example/chat",
+            "https://agenrena.example/" + "x" * 2048,
+        ]:
+            with self.subTest(chat_url=value):
+                self.platform.completed(chat_url=value)
+                response = self.post("check")
+                self.assertEqual(response.status_code, 502)
+                self.assertIn("INVALID_CONSENT_RESPONSE", response.data["details"])
+                connection = AgenrenaConnection.current()
+                self.assertEqual(connection.status, "pending")
+                self.assertEqual(connection.session_id, session_id)
+                self.assertEqual(connection.grant_id, "")
+                self.assertEqual(connection.chat_url, "")
+                self.assertFalse(AuditEvent.objects.filter(action="agenrena.connected").exists())
+        self.platform.completed()
+        del self.platform.session["chat_url"]
+        self.assertEqual(self.post("check").status_code, 502)
+        self.assertEqual(AgenrenaConnection.current().status, "pending")
+        # A corrected upstream response can complete the same pending session.
+        self.platform.completed(chat_url="http://localhost:8020/s/i/Ab12Cd34/chat")
+        response = self.post("check")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["chat_url"], self.platform.session["chat_url"])
+
     def test_expired_consent_returns_to_unconnected(self):
         self.post("connect")
         self.platform.session = {"status": "expired"}
-        self.assertEqual(self.post("check").data["status"], "expired")
+        self.assertEqual(self.post("check").data, {"status": "expired", "chat_url": None})
         self.assertIsNone(AgenrenaConnection.current())
 
     def test_connected_store_must_disconnect_before_reconnecting(self):
@@ -140,7 +187,10 @@ class AgenrenaTests(TestCase):
 
     def test_disconnect_hands_the_grant_back(self):
         self.connect()
-        self.assertEqual(self.post("disconnect").status_code, 200)
+        response = self.post("disconnect")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"status": "none", "chat_url": None})
+        self.assertIsNone(self.overview()["chat_url"])
         self.assertEqual(self.platform.paths("DELETE"), ["/api/business-api/grants/grant-A/"])
         self.assertIsNone(AgenrenaConnection.current())
         self.assertTrue(AuditEvent.objects.filter(action="agenrena.disconnected").exists())
@@ -153,7 +203,7 @@ class AgenrenaTests(TestCase):
 
     @override_settings(AGENRENA_VENDOR_ID="", AGENRENA_VENDOR_SECRET="")
     def test_unconfigured_deployment_keeps_working_without_agenrena(self):
-        self.assertEqual(self.overview(), {"configured": False, "status": "none"})
+        self.assertEqual(self.overview(), {"configured": False, "status": "none", "chat_url": None})
         self.assertEqual(self.post("connect").status_code, 400)
         identity = CustomerIdentity.objects.create(agenrena_customer_ref=A)
         self.assertFalse(deliver_to_customer(identity, "訂單已送出"))
@@ -220,8 +270,18 @@ class AgenrenaTests(TestCase):
         self.assertFalse(deliver_to_customer(identity, "x"))
         self.assertEqual(len(self.platform.paths("POST")), sends)
         self.assertEqual(self.overview()["status"], "revoked")
+        self.assertIsNone(self.overview()["chat_url"])
+        self.assertIsNone(self.post("check").data["chat_url"])
         # Reconnecting starts a fresh authorization.
-        self.assertEqual(self.connect().data["status"], "connected")
+        self.assertEqual(self.post("connect").status_code, 201)
+        self.assertEqual(AgenrenaConnection.current().chat_url, "")
+        self.assertIsNone(self.overview()["chat_url"])
+        next_url = "https://stage.agenrena.example/s/i/NewStore/chat"
+        self.platform.completed(grant_id="grant-B", chat_url=next_url)
+        done = self.post("check")
+        self.assertEqual(done.data["status"], "connected")
+        self.assertEqual(done.data["chat_url"], next_url)
+        self.assertEqual(AgenrenaConnection.current().chat_url, next_url)
 
     def test_unknown_customer_is_a_failed_delivery_not_an_error(self):
         self.connect()
@@ -270,7 +330,7 @@ class NotificationCommitTests(TransactionTestCase):
         Membership.objects.create(user=owner, role="owner")
         self.actor = human_actor(owner)
         self.identity = CustomerIdentity.objects.create(agenrena_customer_ref=A)
-        AgenrenaConnection.objects.create(status="connected", grant_id="grant-A")
+        AgenrenaConnection.objects.create(status="connected", grant_id="grant-A", chat_url=CHAT_URL)
 
     def commit_notification(self, failure=None):
         following_callback = Mock()

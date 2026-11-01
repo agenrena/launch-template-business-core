@@ -5,6 +5,7 @@ import logging
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import URLValidator
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -195,11 +196,12 @@ def update_customer_profile(actor, customer_ref, display_name):
 
 def agenrena_state(connection):
     if connection is None:
-        return {"status": "none"}
+        return {"status": "none", "chat_url": None}
     state = {
         "status": connection.status,
         "business_name": connection.business_name,
         "connected_at": connection.connected_at,
+        "chat_url": connection.chat_url if connection.status == "connected" else None,
     }
     if connection.status == "pending":
         state["expires_at"] = connection.session_expires_at
@@ -239,6 +241,7 @@ def start_agenrena_connection(actor):
                 "session_expires_at": expires_at,
                 "grant_id": "",
                 "business_name": "",
+                "chat_url": "",
                 "connected_at": None,
                 "connected_by": None,
             },
@@ -266,12 +269,18 @@ def check_agenrena_connection(actor):
             return agenrena_state(AgenrenaConnection.current())
         if status == "expired":
             connection.delete()
-            return {"status": "expired"}
+            return {"status": "expired", "chat_url": None}
         if status != "completed":
             return agenrena_state(connection)
+        chat_url = payload.get("chat_url")
+        try:
+            URLValidator(schemes=["http", "https"])(chat_url)
+        except DjangoValidationError as exc:
+            raise agenrena.AgenrenaError("INVALID_CONSENT_RESPONSE") from exc
         connection.status = "connected"
         connection.grant_id = str(payload.get("grant_id") or "")
         connection.business_name = str(payload.get("business_name") or "")[:200]
+        connection.chat_url = chat_url
         connection.connected_at = timezone.now()
         connection.connected_by = actor.user
         connection.session_id = None

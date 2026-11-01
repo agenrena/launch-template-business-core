@@ -86,6 +86,7 @@ export type McpInfo =
 export interface AgenrenaState {
   configured: boolean;
   status: "none" | "pending" | "connected" | "revoked" | "expired";
+  chat_url: string | null;
   business_name?: string;
   connected_at?: string | null;
   expires_at?: string;

@@ -144,7 +144,7 @@ def main():
                 == "Smoke business"
             )
             # Without injected Vendor credentials the App runs without Agenrena.
-            assert request("agenrena/") == {"configured": False, "status": "none"}
+            assert request("agenrena/") == {"configured": False, "status": "none", "chat_url": None}
             key = request("keys/", {"label": "Smoke MCP", "role": "customer_service"})
             subprocess.run(
                 ["node", "mcp/tests/http-smoke.mjs"],

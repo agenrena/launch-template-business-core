@@ -152,6 +152,7 @@ class AgenrenaConnection(models.Model):
     session_expires_at = models.DateTimeField(null=True, blank=True)
     grant_id = models.CharField(max_length=64, blank=True)
     business_name = models.CharField(max_length=200, blank=True)
+    chat_url = models.URLField(max_length=2048, blank=True)
     connected_at = models.DateTimeField(null=True, blank=True)
     connected_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL

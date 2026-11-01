@@ -290,7 +290,7 @@ class AgenrenaCheckView(APIView):
 class AgenrenaDisconnectView(APIView):
     def post(self, request):
         services.disconnect_agenrena(human_actor(request.user))
-        return Response({"status": "none"})
+        return Response(services.agenrena_state(None))
 
 
 class AuditView(APIView):
