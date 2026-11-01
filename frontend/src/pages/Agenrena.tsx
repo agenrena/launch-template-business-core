@@ -16,6 +16,7 @@ export function AgenrenaPanel({
 }) {
   const state = useData<AgenrenaState>("agenrena/"),
     [connecting, setConnecting] = useState(false),
+    [checkedEmpty, setCheckedEmpty] = useState(false),
     action = useAction();
   const status = state.data?.status ?? "none";
   const connected = status === "connected";
@@ -34,31 +35,63 @@ export function AgenrenaPanel({
                   ? `已連接：${state.data?.business_name || "Agenrena 商家"}`
                   : status === "revoked"
                     ? `授權已失效：${state.data?.business_name || "請重新連接"}`
-                    : "尚未連接"}
+                    : checkedEmpty
+                      ? "尚未授權"
+                      : "尚未連接"}
           </small>
         </div>
         {owner && configured && (
-          <button
-            className={connected ? "quiet" : "primary"}
-            disabled={action.busy}
-            onClick={() => {
-              if (!connected) setConnecting(true);
-              else if (
-                window.confirm(
-                  "中斷與 Agenrena 的連接？顧客將不再於 Agenrena 對話收到進度通知。",
-                )
+          <div className="actions">
+            <button
+              className={connected ? "quiet" : "primary"}
+              disabled={action.busy || connecting}
+              onClick={() => {
+                setCheckedEmpty(false);
+                void action.run(async () => {
+                  const result = await change<AgenrenaState>(
+                    "agenrena/sync/",
+                    "POST",
+                    {},
+                  );
+                  setCheckedEmpty(result.status === "none");
+                });
+              }}
+            >
+              {action.busy ? "處理中…" : "檢查連接"}
+            </button>
+            {connected ? (
+              <button
+                className="quiet"
+                disabled={action.busy || connecting}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "中斷與 Agenrena 的連接？顧客將不再於 Agenrena 對話收到進度通知。",
+                    )
+                  )
+                    void action.run(async () => {
+                      setCheckedEmpty(false);
+                      await change("agenrena/disconnect/", "POST", {});
+                    });
+                }}
+              >
+                中斷連接
+              </button>
+            ) : (
+              checkedEmpty && (
+                <button
+                  className="primary"
+                  disabled={action.busy || connecting}
+                  onClick={() => {
+                    setCheckedEmpty(false);
+                    setConnecting(true);
+                  }}
+                >
+                  連接
+                </button>
               )
-                void action.run(() =>
-                  change("agenrena/disconnect/", "POST", {}),
-                );
-            }}
-          >
-            {connected
-              ? "中斷連接"
-              : status === "revoked"
-                ? "重新連接"
-                : "連接"}
-          </button>
+            )}
+          </div>
         )}
         <Alert message={state.error?.message || action.error} />
       </div>

@@ -1,6 +1,7 @@
 """The store on Agenrena: this App is its Vendor and the store grants it once.
 The platform is faked at the HTTP layer."""
 
+import json
 import uuid
 from contextlib import ExitStack
 from datetime import timedelta
@@ -13,7 +14,7 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from core.agenrena import AgenrenaError
+from core.agenrena import AgenrenaError, _json
 from core.models import AgenrenaConnection, AuditEvent, Business, CustomerIdentity, Membership
 from core.permissions import human_actor
 from core.services import deliver_to_customer, notify_customer, update_business
@@ -22,6 +23,12 @@ from .test_core import PASSWORD, ref
 
 A = ref(0xA)
 CHAT_URL = "https://agenrena.example/s/i/Ab12Cd34/chat"
+GRANT = {
+    "grant_id": "grant-A",
+    "business_name": "大安店",
+    "chat_url": CHAT_URL,
+    "scopes": ["messages:send"],
+}
 VENDOR = {"AGENRENA_VENDOR_ID": "vendor-1", "AGENRENA_VENDOR_SECRET": "bvs_private_vendor_secret"}
 CARD = {
     "status": "success",
@@ -39,6 +46,7 @@ class FakeAgenrena:
         self.session = {"status": "pending"}
         self.reject_token_once = False
         self.send_error = None
+        self.grants = []
 
     def __call__(self, method, path, body=None, *, token="", grant_id=""):
         self.calls.append({"method": method, "path": path, "body": body, "grant_id": grant_id})
@@ -59,6 +67,8 @@ class FakeAgenrena:
             }
         if path.startswith("/api/business-api/authorize/session/"):
             return 200, self.session
+        if path == "/api/business-api/grants/" and method == "GET":
+            return 200, self.grants
         if path.startswith("/api/business-api/grants/"):
             return 204, {}
         if path == "/api/business-api/messages/send/":
@@ -197,7 +207,7 @@ class AgenrenaTests(TestCase):
 
     def test_admin_reads_status_but_only_owner_manages(self):
         self.assertEqual(self.admin_client.get("/api/console/agenrena/").status_code, 200)
-        for action in ["connect", "check", "disconnect"]:
+        for action in ["connect", "check", "sync", "disconnect"]:
             self.assertEqual(self.post(action, self.admin_client).status_code, 403)
         self.assertEqual(self.platform.calls, [])
 
@@ -205,6 +215,7 @@ class AgenrenaTests(TestCase):
     def test_unconfigured_deployment_keeps_working_without_agenrena(self):
         self.assertEqual(self.overview(), {"configured": False, "status": "none", "chat_url": None})
         self.assertEqual(self.post("connect").status_code, 400)
+        self.assertEqual(self.post("sync").status_code, 400)
         identity = CustomerIdentity.objects.create(agenrena_customer_ref=A)
         self.assertFalse(deliver_to_customer(identity, "訂單已送出"))
         self.assertEqual(self.platform.calls, [])
@@ -220,6 +231,100 @@ class AgenrenaTests(TestCase):
         self.assertEqual(result.status_code, 502)
         self.assertNotIn("bvs_private_vendor_secret", str(result.data))
         self.assertIsNone(AgenrenaConnection.current())
+
+    def test_manual_check_imports_existing_grant_without_consent(self):
+        # The HTTP decoder must preserve the list returned by Agenrena.
+        self.platform.grants = _json(json.dumps([GRANT]).encode())
+        response = self.post("sync")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], "connected")
+        self.assertEqual(response.data["chat_url"], CHAT_URL)
+        connection = AgenrenaConnection.current()
+        self.assertEqual(connection.grant_id, "grant-A")
+        self.assertEqual(connection.business_name, "大安店")
+        self.assertEqual(connection.connected_by, self.owner)
+        self.assertIsNone(connection.session_id)
+        self.assertEqual(
+            self.platform.paths(),
+            [
+                "/api/business-api/token/",
+                "/api/business-api/grants/",
+            ],
+        )
+        event = AuditEvent.objects.get(action="agenrena.connection_checked")
+        self.assertEqual(event.actor_id, str(self.owner.pk))
+        self.assertEqual(event.detail, {})
+        self.assertEqual(self.overview(self.admin_client)["chat_url"], CHAT_URL)
+        # Repeat checks retain the original local connection timestamp.
+        self.assertEqual(self.post("sync").status_code, 200)
+        self.assertEqual(AgenrenaConnection.objects.count(), 1)
+        self.assertEqual(AgenrenaConnection.current().connected_at, connection.connected_at)
+
+    def test_manual_check_no_grants_allows_explicit_consent(self):
+        self.assertEqual(self.post("sync").data, {"status": "none", "chat_url": None})
+        self.assertIsNone(AgenrenaConnection.current())
+        self.assertNotIn("/api/business-api/authorize/start/", self.platform.paths())
+        self.assertEqual(self.connect().data["status"], "connected")
+        # A successful empty response clears a stale local grant and chat URL.
+        self.assertEqual(self.post("sync").data, {"status": "none", "chat_url": None})
+        self.assertIsNone(AgenrenaConnection.current())
+        self.assertEqual(self.platform.paths("DELETE"), [])
+
+    def test_manual_check_replaces_pending_consent(self):
+        self.post("connect")
+        self.platform.grants = [GRANT]
+        self.assertEqual(self.post("sync").status_code, 200)
+        connection = AgenrenaConnection.current()
+        self.assertEqual(connection.status, "connected")
+        self.assertIsNone(connection.session_id)
+        self.assertIsNone(connection.session_expires_at)
+        self.assertEqual(self.post("check").data["chat_url"], CHAT_URL)
+
+    def test_manual_check_errors_preserve_existing_connection(self):
+        self.connect()
+        before = AgenrenaConnection.objects.values().get()
+        for payload, status in [
+            (_json(b"<html>Unavailable</html>"), 502),
+            (None, 502),
+            ([GRANT, {**GRANT, "grant_id": "grant-B"}], 409),
+            ([{}], 502),
+            ([{**GRANT, "grant_id": ""}], 502),
+            ([{**GRANT, "business_name": None}], 502),
+            ([{**GRANT, "chat_url": "javascript:alert(1)"}], 502),
+            ([{**GRANT, "scopes": "messages:send"}], 502),
+            ([{**GRANT, "scopes": []}], 409),
+        ]:
+            with self.subTest(payload=payload):
+                self.platform.grants = payload
+                response = self.post("sync")
+                self.assertEqual(response.status_code, status, response.data)
+                self.assertEqual(AgenrenaConnection.objects.values().get(), before)
+        with patch("core.agenrena._request", side_effect=AgenrenaError("UNAVAILABLE")):
+            self.assertEqual(self.post("sync").status_code, 502)
+        self.assertEqual(AgenrenaConnection.objects.values().get(), before)
+        self.assertFalse(AuditEvent.objects.filter(action="agenrena.connection_checked").exists())
+
+    def test_manual_check_does_not_overwrite_a_concurrent_change(self):
+        self.connect()
+        self.platform.grants = [GRANT]
+
+        def platform_with_change(method, path, *args, **kwargs):
+            if path == "/api/business-api/grants/":
+                AgenrenaConnection.objects.filter(pk=1).update(
+                    status="revoked",
+                    updated_at=timezone.now(),
+                )
+            return self.platform(method, path, *args, **kwargs)
+
+        with patch("core.agenrena._request", side_effect=platform_with_change):
+            self.assertEqual(self.post("sync").status_code, 409)
+        self.assertEqual(AgenrenaConnection.current().status, "revoked")
+
+    def test_manual_check_requires_csrf(self):
+        client = APIClient(enforce_csrf_checks=True)
+        client.force_login(self.owner)
+        self.assertEqual(self.post("sync", client).status_code, 403)
+        self.assertEqual(self.platform.calls, [])
 
     def test_notification_is_sent_after_commit(self):
         self.connect()

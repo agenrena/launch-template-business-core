@@ -18,6 +18,7 @@ const actionNames: Record<string, string> = {
   "business.read": "查詢商家資料",
   "agenrena.connect_started": "開始連接 Agenrena",
   "agenrena.connected": "連接 Agenrena",
+  "agenrena.connection_checked": "檢查 Agenrena 連接",
   "agenrena.disconnected": "中斷 Agenrena 連接",
   "agenrena.message_sent": "送出 Agenrena 通知",
   "agenrena.message_failed": "Agenrena 通知未送達",

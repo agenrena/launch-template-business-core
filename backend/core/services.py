@@ -219,6 +219,72 @@ def _require_agenrena(actor):
         raise ValidationError("此部署尚未設定 Agenrena Vendor 憑證，請聯絡部署管理者。")
 
 
+def _save_agenrena_connection(actor, business, connection, payload, *, error_code, action):
+    """Both consent and existing grants use the same validated local connection."""
+    if not isinstance(payload, dict):
+        raise agenrena.AgenrenaError(error_code)
+    for field, limit in (("grant_id", 64), ("business_name", 200)):
+        value = payload.get(field)
+        if not isinstance(value, str) or not value.strip() or len(value) > limit:
+            raise agenrena.AgenrenaError(error_code)
+    chat_url = payload.get("chat_url")
+    try:
+        URLValidator(schemes=["http", "https"])(chat_url)
+    except DjangoValidationError as exc:
+        raise agenrena.AgenrenaError(error_code) from exc
+    connection = connection or AgenrenaConnection(pk=1)
+    if connection.status != "connected" or connection.grant_id != payload["grant_id"]:
+        connection.connected_at = timezone.now()
+        connection.connected_by = actor.user
+    connection.status = "connected"
+    connection.grant_id = payload["grant_id"]
+    connection.business_name = payload["business_name"]
+    connection.chat_url = chat_url
+    connection.session_id = None
+    connection.session_expires_at = None
+    connection.save()
+    audit(actor, action, business)
+    return agenrena_state(connection)
+
+
+def sync_agenrena_connection(actor):
+    """Owner explicitly imports the Vendor's existing authorization, if any."""
+    _require_agenrena(actor)
+    previous = AgenrenaConnection.current()
+    revision = previous.updated_at if previous else None
+    grants = agenrena.grants()
+    if not isinstance(grants, list):
+        raise agenrena.AgenrenaError("INVALID_GRANTS_RESPONSE")
+    if len(grants) > 1:
+        raise Conflict("此 App 查到多筆授權，無法確認這間店的連接。")
+    if grants:
+        grant = grants[0]
+        scopes = grant.get("scopes") if isinstance(grant, dict) else None
+        if not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
+            raise agenrena.AgenrenaError("INVALID_GRANTS_RESPONSE")
+        if "messages:send" not in scopes:
+            raise Conflict("現有授權缺少 messages:send 權限，無法建立通知連接。")
+    with transaction.atomic():
+        business = Business.objects.select_for_update().get(pk=1)
+        _require_agenrena(actor)
+        connection = AgenrenaConnection.current()
+        if (connection.updated_at if connection else None) != revision:
+            raise Conflict("連接狀態已變更，請重新檢查。")
+        if not grants:
+            if connection:
+                connection.delete()
+            audit(actor, "agenrena.connection_checked", business)
+            return agenrena_state(None)
+        return _save_agenrena_connection(
+            actor,
+            business,
+            connection,
+            grants[0],
+            error_code="INVALID_GRANTS_RESPONSE",
+            action="agenrena.connection_checked",
+        )
+
+
 def start_agenrena_connection(actor):
     """Return a single-use consent link for the store's Agenrena owner/admin."""
     _require_agenrena(actor)
@@ -226,6 +292,8 @@ def start_agenrena_connection(actor):
         raise Conflict("已連接 Agenrena；請先中斷連接再重新連接。")
     # The external call stays outside the transaction; no lock waits on the network.
     payload = agenrena.start_authorization()
+    if not isinstance(payload, dict):
+        raise agenrena.AgenrenaError("INVALID_CONSENT_RESPONSE")
     expires_at = parse_datetime(str(payload.get("expires_at", "")))
     if not payload.get("session_id") or not payload.get("authorize_url") or expires_at is None:
         raise agenrena.AgenrenaError("INVALID_CONSENT_RESPONSE")
@@ -259,6 +327,8 @@ def check_agenrena_connection(actor):
         return agenrena_state(connection)
     session_id = connection.session_id
     payload = agenrena.authorization(session_id)
+    if not isinstance(payload, dict):
+        raise agenrena.AgenrenaError("INVALID_CONSENT_RESPONSE")
     status = payload.get("status")
     with transaction.atomic():
         business = Business.objects.select_for_update().get(pk=1)
@@ -272,22 +342,14 @@ def check_agenrena_connection(actor):
             return {"status": "expired", "chat_url": None}
         if status != "completed":
             return agenrena_state(connection)
-        chat_url = payload.get("chat_url")
-        try:
-            URLValidator(schemes=["http", "https"])(chat_url)
-        except DjangoValidationError as exc:
-            raise agenrena.AgenrenaError("INVALID_CONSENT_RESPONSE") from exc
-        connection.status = "connected"
-        connection.grant_id = str(payload.get("grant_id") or "")
-        connection.business_name = str(payload.get("business_name") or "")[:200]
-        connection.chat_url = chat_url
-        connection.connected_at = timezone.now()
-        connection.connected_by = actor.user
-        connection.session_id = None
-        connection.session_expires_at = None
-        connection.save()
-        audit(actor, "agenrena.connected", business)
-        return agenrena_state(connection)
+        return _save_agenrena_connection(
+            actor,
+            business,
+            connection,
+            payload,
+            error_code="INVALID_CONSENT_RESPONSE",
+            action="agenrena.connected",
+        )
 
 
 def disconnect_agenrena(actor):

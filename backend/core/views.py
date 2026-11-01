@@ -287,6 +287,11 @@ class AgenrenaCheckView(APIView):
         return Response(services.check_agenrena_connection(human_actor(request.user)))
 
 
+class AgenrenaSyncView(APIView):
+    def post(self, request):
+        return Response(services.sync_agenrena_connection(human_actor(request.user)))
+
+
 class AgenrenaDisconnectView(APIView):
     def post(self, request):
         services.disconnect_agenrena(human_actor(request.user))

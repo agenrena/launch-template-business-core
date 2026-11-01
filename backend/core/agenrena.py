@@ -42,6 +42,10 @@ def authorization(session_id):
     return _call("GET", f"/api/business-api/authorize/session/{quote(str(session_id))}/")
 
 
+def grants():
+    return _call("GET", "/api/business-api/grants/")
+
+
 def release_grant(grant_id):
     """Hand a grant back, as the store's owner disconnecting it from this App."""
     try:
@@ -88,6 +92,8 @@ def _token():
     )
     if status != 200:
         raise AgenrenaError(_code(payload) or f"HTTP_{status}", status)
+    if not isinstance(payload, dict):
+        raise AgenrenaError("INVALID_TOKEN_RESPONSE", status)
     expires = parse_datetime(str(payload.get("expires_at", "")))
     token = payload.get("access_token")
     if not token or expires is None:
@@ -134,10 +140,12 @@ def _json(raw):
         value = json.loads(raw or b"{}")
     except ValueError:
         return {}
-    return value if isinstance(value, dict) else {}
+    return value if isinstance(value, (dict, list)) else {}
 
 
 def _code(payload):
+    if not isinstance(payload, dict):
+        return ""
     error = payload.get("error")
     if not isinstance(error, dict):
         return ""

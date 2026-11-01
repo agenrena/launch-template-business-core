@@ -59,8 +59,9 @@ Base 用清楚的程式結構示範如何擴充；權限組可由商家的 Codin
 ```
 
 1. 部署環境注入 `AGENRENA_VENDOR_ID`、`AGENRENA_VENDOR_SECRET`（由 Agenrena 發給這個 App）。沒有設定時 Agenrena 功能關閉，其他功能照常。
-2. owner 在「商家資料」按「連接」，畫面出現 QR code；這間店在 Agenrena 上的 owner/admin 用 Agenrena App 掃描並按同意。連結約 5 分鐘內有效。
-3. 連接後，業務模板呼叫 `core.services.notify_customer` 送出的進度，會出現在顧客與這間店的對話裡。核心本身不主動發訊息。
+2. owner 在「商家資料」按「檢查連接」。從 Agenrena 後台下載初始化套件時已授權的 App，會直接取得並保存授權與聊天網址，不必再掃碼。
+3. 確定沒有授權時，才顯示「連接」，由 owner 決定是否產生 QR code，交由這間店在 Agenrena 上的 owner/admin 掃描同意。查詢失敗保留本地狀態，不會當成未授權。
+4. 連接後，業務模板呼叫 `core.services.notify_customer` 送出的進度，會出現在顧客與這間店的對話裡。核心本身不主動發訊息。
 
 細節見 [Agent 與權限](docs/agent.md)。
 

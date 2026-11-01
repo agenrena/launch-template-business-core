@@ -12,6 +12,7 @@ urlpatterns = [
     path("api/console/agenrena/", v.AgenrenaView.as_view()),
     path("api/console/agenrena/connect/", v.AgenrenaConnectView.as_view()),
     path("api/console/agenrena/check/", v.AgenrenaCheckView.as_view()),
+    path("api/console/agenrena/sync/", v.AgenrenaSyncView.as_view()),
     path("api/console/agenrena/disconnect/", v.AgenrenaDisconnectView.as_view()),
     path("api/console/members/", v.MembersView.as_view()),
     path("api/console/members/<int:pk>/", v.MemberView.as_view()),

@@ -84,6 +84,15 @@ CORE_API_URL=http://127.0.0.1:8042/api/agent-api/ CORE_AGENT_KEY=<私下設定�
 
 連接流程（owner，在「商家資料」頁）：
 
+先按「檢查連接」：`POST /api/console/agenrena/sync/` 使用 Vendor 憑證呼叫 `GET /api/business-api/grants/`。這是手動操作，不在啟動、狀態查詢或背景自動執行；admin 只能讀本地狀態。
+
+- 唯一一筆授權且含 `messages:send`：驗證並保存 `grant_id`、商家名稱與 `chat_url`，回傳 `connected`；不建立 consent session。下載套件時已授權的 App 走這條路徑。
+- 空清單：清除已不存在的本地連接，回傳 `{"status": "none", "chat_url": null}`；畫面才提供「連接」，由 owner 決定是否開始下列掃碼流程。
+- 多筆授權或缺少 `messages:send` 回 409；查詢失敗或資料無效回 502（無效清單為 `INVALID_GRANTS_RESPONSE`）。均保留本地狀態，不選第一筆、不自動重新授權。查詢期間本地連接若已變更，回 409 要求重新檢查。
+- 成功檢查寫入 `agenrena.connection_checked` 稽核；不記錄授權回應內容。重複取得同一筆已連接授權時保留原本的本地連接時間與操作人。
+
+沒有授權時的掃碼流程與中斷操作：
+
 1. `POST /api/console/agenrena/connect/`：App 以 Vendor 身分向 Agenrena 要一個授權連結，回傳 `authorize_url` 與 `expires_at`。連結約 5 分鐘內有效且只能用一次；它不寫入資料庫、不進操作紀錄，後台以 QR code 顯示。
 2. 這間店在 Agenrena 上的 owner/admin 用 Agenrena App 掃描，以這間店的商家身分按同意。
 3. 後台每 3 秒 `POST /api/console/agenrena/check/` 輪詢。Agenrena 不回呼，輪詢是平台的設計。完成後保存 `grant_id`、商家名稱與 `chat_url`；`chat_url` 必須是有效的 HTTP(S) 網址（最多 2048 字元），缺少或無效時回 502（`INVALID_CONSENT_RESPONSE`）並保留等待授權狀態。
@@ -91,7 +100,7 @@ CORE_API_URL=http://127.0.0.1:8042/api/agent-api/ CORE_AGENT_KEY=<私下設定�
 
 `GET /api/console/agenrena/` 回傳 `configured`（部署是否有 Vendor 憑證）與 `status`：`none`、`pending`、`connected`、`revoked`。已連接時要先中斷才能重連。Vendor token 以 Vendor 為單位快取，約 1 小時；被拒絕時重換一次。Vendor secret 不出現在任何回應、操作紀錄或 log。
 
-連接狀態回應包含 `chat_url`：`connected` 時提供保存的商家公開聊天網址，其他狀態（含過期與中斷）回傳 `null`。等待授權時資料庫欄位留空，重新授權時清除舊網址，完成後保存新值。Core 直接使用 Agenrena 回傳的網址，不自行組合、不查詢既有 grant 或補齊舊資料；網址的介面呈現、QR code 與預填訊息由 fork 專案實作。
+連接狀態回應包含 `chat_url`：`connected` 時提供保存的商家公開聊天網址，其他狀態（含過期與中斷）回傳 `null`。等待授權時資料庫欄位留空，重新授權時清除舊網址，完成後保存新值。Core 直接使用 Agenrena 回傳的網址，不自行組合；手動查詢與掃碼完成共用驗證和保存邏輯。聊天網址的介面呈現、QR code 與預填訊息由 fork 專案實作。
 
 業務模板送通知：
 
