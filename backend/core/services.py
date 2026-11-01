@@ -308,9 +308,25 @@ def notify_customer(identity, text, *, card=None, message_id=""):
     """
     if identity is None or not identity.agenrena_customer_ref:
         return
-    transaction.on_commit(
-        lambda: deliver_to_customer(identity, text, card=card, message_id=message_id)
-    )
+
+    def deliver_after_commit():
+        try:
+            deliver_to_customer(identity, text, card=card, message_id=message_id)
+        except Exception:
+            # Delivery or its audit may have failed after the business committed.
+            # Do not leak exception text or report the committed write as failed.
+            try:
+                with transaction.atomic():
+                    audit(
+                        SYSTEM,
+                        "agenrena.message_failed",
+                        customer=identity,
+                        detail={"error": "DELIVERY_OUTCOME_UNKNOWN"},
+                    )
+            except Exception:
+                logger.error("Agenrena delivery outcome could not be recorded.")
+
+    transaction.on_commit(deliver_after_commit)
 
 
 def deliver_to_customer(identity, text, *, card=None, message_id=""):

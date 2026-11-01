@@ -21,6 +21,8 @@ npm run dev --prefix frontend
 
 Vite 使用 5190，代理 API 到 8042、MCP 到 8767。可用 CORE_DEV_API / CORE_DEV_MCP 覆寫。設定 COOKIE_SECURE=false 與 CSRF_TRUSTED_ORIGINS=http://localhost:5190,http://127.0.0.1:5190。MCP 另設定 CORE_API_URL、PORT=8767 執行。
 
+Agent 客戶端的連線設定見 [MCP 連線 JSON 範例](agent.md#mcp-連線-json-範例)。
+
 ## 修改入口與驗證
 
 - 新增共同欄位：models → migration → serializer → service → UI。

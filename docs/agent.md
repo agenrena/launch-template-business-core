@@ -40,6 +40,27 @@ GET profile 不建立資料；第一次經顧客確認的 update 才建立。內
 
 HTTP: POST /mcp，Bearer abc_…，無 MCP session。tools/list 也會先驗證金鑰。Session cookies 不能代替 Agent 金鑰，Agent 金鑰不能進後台。
 
+### MCP 連線 JSON 範例
+
+以下供支援 `mcpServers`、`url` 與 `headers` 格式的 Agent 客戶端設定 Streamable HTTP 連線；其他客戶端依其設定格式填入相同網址與驗證資訊。
+
+```json
+{
+  "mcpServers": {
+    "business-core": {
+      "url": "https://your-store.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer abc_REPLACE_WITH_YOUR_AGENT_KEY"
+      }
+    }
+  }
+}
+```
+
+將 `url` 換成後台「Agent 連接」顯示的 MCP 網址，將 `abc_REPLACE_WITH_YOUR_AGENT_KEY` 換成該頁建立的 Agent 金鑰，保留 `Bearer ` 前綴。本機 Compose 網址為 `http://localhost:8082/mcp`，正式對外使用 HTTPS。範例只有佔位值；實際金鑰存入客戶端的私密設定，不提交到 Git。此處使用的是 Agent 金鑰，不是 Agenrena Vendor 憑證。
+
+### stdio
+
 ```sh
 cd mcp
 npm ci
@@ -50,6 +71,8 @@ CORE_API_URL=http://127.0.0.1:8042/api/agent-api/ CORE_AGENT_KEY=<私下設定�
 不要將實際金鑰寫入命令歷史；正式使用從 Agent 的秘密設定注入。HTTP server 預設本機 8765；本機與其他模板一起測試時可設定 PORT=8767。
 
 ## Agenrena 連接與通知
+
+後端呼叫 Agenrena API 時統一帶上 `User-Agent: Agenrena-Business-Core/0.1`，識別這套 App 的 HTTP client。
 
 ```text
 這間店 = Agenrena 上的一個 Business Profile
@@ -83,6 +106,7 @@ notify_customer(
 ```
 
 - 在業務寫入的交易裡呼叫；實際送出在交易提交後，永遠不會讓業務寫入失敗或回滾。
+- 提交後的通知或稽核例外均隔離；無法確認結果時記錄 `DELIVERY_OUTCOME_UNKNOWN`，稽核也無法寫入時只留固定日誌，不含例外內容。不自動重送。
 - 送進顧客與這間店的對話；訊息在顧客眼中就是這間店在說話。
 - 卡片只有 `status`（`info`／`success`／`warning`／`cancelled`）、`header`（≤100 字）、`content` 的 label（≤40 字）／value（≤200 字），最多 20 列，不接受其他欄位。
 - Agenrena 回報 grant 已撤銷時，連接改為 `revoked` 並停止發送，後台顯示「授權已失效」，由 owner 重新連接。其他失敗（例如顧客已不存在）只記錄，不改變連接。

@@ -105,7 +105,11 @@ def _token_key():
 
 
 def _request(method, path, body=None, *, token="", grant_id=""):
-    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "Agenrena-Business-Core/0.1",
+    }
     if token:
         headers["Authorization"] = f"Bearer {token}"
     if grant_id:

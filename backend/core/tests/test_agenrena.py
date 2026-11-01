@@ -2,17 +2,21 @@
 The platform is faked at the HTTP layer."""
 
 import uuid
+from contextlib import ExitStack
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.db import OperationalError, transaction
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from core.models import AgenrenaConnection, AuditEvent, CustomerIdentity, Membership
-from core.services import deliver_to_customer, notify_customer
+from core.agenrena import AgenrenaError
+from core.models import AgenrenaConnection, AuditEvent, Business, CustomerIdentity, Membership
+from core.permissions import human_actor
+from core.services import deliver_to_customer, notify_customer, update_business
 
 from .test_core import PASSWORD, ref
 
@@ -251,3 +255,92 @@ class AgenrenaTests(TestCase):
             "bvs_private_vendor_secret",
             str(list(AuditEvent.objects.values())) + str(self.overview()),
         )
+
+
+@override_settings(**VENDOR)
+class NotificationCommitTests(TransactionTestCase):
+    def setUp(self):
+        cache.clear()
+        self.platform = FakeAgenrena()
+        patcher = patch("core.agenrena._request", self.platform)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        Business.current()
+        owner = get_user_model().objects.create_user(username="owner")
+        Membership.objects.create(user=owner, role="owner")
+        self.actor = human_actor(owner)
+        self.identity = CustomerIdentity.objects.create(agenrena_customer_ref=A)
+        AgenrenaConnection.objects.create(status="connected", grant_id="grant-A")
+
+    def commit_notification(self, failure=None):
+        following_callback = Mock()
+        with ExitStack() as stack:
+            with transaction.atomic():
+                update_business(self.actor, {"name": "Committed store"})
+                # Faults apply to delivery, after the business write and its audit.
+                if failure is not None:
+                    stack.enter_context(failure)
+                notify_customer(self.identity, "private message", card=CARD)
+                transaction.on_commit(following_callback)
+                self.assertNotIn("/api/business-api/messages/send/", self.platform.paths())
+        self.assertEqual(Business.current().name, "Committed store")
+        self.assertTrue(AuditEvent.objects.filter(action="business.updated").exists())
+        following_callback.assert_called_once_with()
+
+    def test_notification_runs_after_real_commit(self):
+        self.commit_notification()
+        self.assertIn("/api/business-api/messages/send/", self.platform.paths())
+        self.assertTrue(AuditEvent.objects.filter(action="agenrena.message_sent").exists())
+
+    def test_platform_failure_preserves_committed_write(self):
+        self.commit_notification(
+            patch("core.agenrena._request", side_effect=AgenrenaError("UNAVAILABLE"))
+        )
+        event = AuditEvent.objects.get(action="agenrena.message_failed")
+        self.assertEqual(event.detail, {"error": "UNAVAILABLE"})
+
+    def test_unexpected_delivery_failures_are_isolated_and_redacted(self):
+        for target, error in [
+            ("core.agenrena._request", ValueError("private message bvs_private_vendor_secret")),
+            (
+                "core.services.AgenrenaConnection.objects.filter",
+                OperationalError("private query values"),
+            ),
+        ]:
+            with self.subTest(target=target):
+                AuditEvent.objects.filter(action="agenrena.message_failed").delete()
+                self.commit_notification(patch(target, side_effect=error))
+                event = AuditEvent.objects.get(action="agenrena.message_failed")
+                self.assertEqual(event.detail, {"error": "DELIVERY_OUTCOME_UNKNOWN"})
+
+    def test_audit_failure_is_isolated_for_successful_and_failed_delivery(self):
+        for platform_error in [None, (503, {"error": {"code": "UNAVAILABLE"}})]:
+            with self.subTest(platform_error=platform_error):
+                self.platform.calls.clear()
+                self.platform.send_error = platform_error
+                with self.assertLogs("core.services", level="ERROR") as logs:
+                    self.commit_notification(
+                        patch(
+                            "core.services.AuditEvent.objects.create",
+                            side_effect=OperationalError(
+                                "private message bvs_private_vendor_secret"
+                            ),
+                        )
+                    )
+                self.assertEqual(
+                    logs.output,
+                    ["ERROR:core.services:Agenrena delivery outcome could not be recorded."],
+                )
+                self.assertTrue(all(record.exc_info is None for record in logs.records))
+                self.assertEqual(self.platform.paths().count("/api/business-api/messages/send/"), 1)
+
+    def test_rollback_discards_notification_and_business_audit(self):
+        original_name = Business.current().name
+        with self.assertRaisesMessage(ValueError, "rollback"):
+            with transaction.atomic():
+                update_business(self.actor, {"name": "Rolled back store"})
+                notify_customer(self.identity, "private message")
+                raise ValueError("rollback")
+        self.assertEqual(Business.current().name, original_name)
+        self.assertFalse(AuditEvent.objects.exists())
+        self.assertEqual(self.platform.calls, [])
