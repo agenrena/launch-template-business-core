@@ -267,7 +267,9 @@ def sync_agenrena_connection(actor):
     with transaction.atomic():
         business = Business.objects.select_for_update().get(pk=1)
         _require_agenrena(actor)
-        connection = AgenrenaConnection.current()
+        # Disconnect and delivery revocation write this row without locking the
+        # Business. Hold its lock from the revision check through the save/delete.
+        connection = AgenrenaConnection.objects.select_for_update().filter(pk=1).first()
         if (connection.updated_at if connection else None) != revision:
             raise Conflict("連接狀態已變更，請重新檢查。")
         if not grants:

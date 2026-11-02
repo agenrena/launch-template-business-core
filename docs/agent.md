@@ -88,7 +88,7 @@ CORE_API_URL=http://127.0.0.1:8042/api/agent-api/ CORE_AGENT_KEY=<私下設定�
 
 - 唯一一筆授權且含 `messages:send`：驗證並保存 `grant_id`、商家名稱與 `chat_url`，回傳 `connected`；不建立 consent session。下載套件時已授權的 App 走這條路徑。
 - 空清單：清除已不存在的本地連接，回傳 `{"status": "none", "chat_url": null}`；畫面才提供「連接」，由 owner 決定是否開始下列掃碼流程。
-- 多筆授權或缺少 `messages:send` 回 409；查詢失敗或資料無效回 502（無效清單為 `INVALID_GRANTS_RESPONSE`）。均保留本地狀態，不選第一筆、不自動重新授權。查詢期間本地連接若已變更，回 409 要求重新檢查。
+- 多筆授權或缺少 `messages:send` 回 409；查詢失敗或資料無效回 502（無效清單為 `INVALID_GRANTS_RESPONSE`）。均保留本地狀態，不選第一筆、不自動重新授權。查詢期間本地連接若已變更，回 409 要求重新檢查。版本檢查與保存／刪除在同一交易中鎖住連接資料，避免同時中斷連接或通知撤銷時被舊狀態覆蓋。
 - 成功檢查寫入 `agenrena.connection_checked` 稽核；不記錄授權回應內容。重複取得同一筆已連接授權時保留原本的本地連接時間與操作人。
 
 沒有授權時的掃碼流程與中斷操作：

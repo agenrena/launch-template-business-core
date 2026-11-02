@@ -3,17 +3,20 @@ The platform is faked at the HTTP layer."""
 
 import json
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from contextlib import ExitStack
 from datetime import timedelta
 from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.db import OperationalError, transaction
+from django.db import OperationalError, close_old_connections, transaction
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from core import services
 from core.agenrena import AgenrenaError, _json
 from core.models import AgenrenaConnection, AuditEvent, Business, CustomerIdentity, Membership
 from core.permissions import human_actor
@@ -420,6 +423,69 @@ class AgenrenaTests(TestCase):
             "bvs_private_vendor_secret",
             str(list(AuditEvent.objects.values())) + str(self.overview()),
         )
+
+
+@override_settings(**VENDOR)
+class ConnectionConcurrencyTests(TransactionTestCase):
+    def setUp(self):
+        cache.clear()
+        self.platform = FakeAgenrena()
+        self.platform.grants = [GRANT]
+        patcher = patch("core.agenrena._request", self.platform)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        Business.current()
+        owner = get_user_model().objects.create_user(username="owner")
+        Membership.objects.create(user=owner, role="owner")
+        self.actor = human_actor(owner)
+        self.identity = CustomerIdentity.objects.create(agenrena_customer_ref=A)
+        AgenrenaConnection.objects.create(
+            status="connected", grant_id=GRANT["grant_id"], chat_url=CHAT_URL
+        )
+
+    def sync_with_concurrent_write(self, write):
+        save = services._save_agenrena_connection
+        concurrent = None
+
+        def run_write():
+            close_old_connections()
+            try:
+                return write()
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+
+            def save_with_concurrent_write(*args, **kwargs):
+                nonlocal concurrent
+                # Sync has checked its revision but has not saved yet. Allow the
+                # other request to finish if the connection row is not locked.
+                concurrent = pool.submit(run_write)
+                try:
+                    concurrent.result(timeout=2)
+                except FutureTimeout:
+                    # A locked writer resumes after sync commits below.
+                    pass
+                return save(*args, **kwargs)
+
+            with patch(
+                "core.services._save_agenrena_connection",
+                side_effect=save_with_concurrent_write,
+            ):
+                result = services.sync_agenrena_connection(self.actor)
+                self.assertEqual(result["status"], "connected")
+            concurrent.result(timeout=10)
+
+    def test_sync_does_not_resurrect_a_concurrently_disconnected_grant(self):
+        self.sync_with_concurrent_write(lambda: services.disconnect_agenrena(self.actor))
+        self.assertIsNone(AgenrenaConnection.current())
+        self.assertTrue(AuditEvent.objects.filter(action="agenrena.disconnected").exists())
+
+    def test_sync_does_not_overwrite_a_concurrent_delivery_revocation(self):
+        self.platform.send_error = (403, {"error": {"code": "INTEGRATION_GRANT_REVOKED"}})
+        self.sync_with_concurrent_write(lambda: deliver_to_customer(self.identity, "test"))
+        self.assertEqual(AgenrenaConnection.current().status, "revoked")
+        self.assertTrue(AuditEvent.objects.filter(action="agenrena.message_failed").exists())
 
 
 @override_settings(**VENDOR)
