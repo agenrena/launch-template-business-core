@@ -47,6 +47,31 @@ npm test --prefix mcp
 
 Role/Permission 是具體權限表，不是通用規則引擎。沒有分店結構：連鎖店每間店各自一套 App。本版本不新增業務插件、付款、會員、排班模型。
 
+## 使用 Agenrena 聊天入口
+
+Core 在授權完成或手動檢查既有授權後，將 Agenrena 回傳的商家公開聊天網址存入 `AgenrenaConnection.chat_url`。管理端可從 `GET /api/console/agenrena/` 的 `chat_url` 取得；未連接或沒有網址時為 `null`，此時不要產生聊天連結。這是需要管理端登入的 API，顧客介面如何取得公開聊天網址由 fork 專案決定。
+
+網址形式例如 `https://agenrena.com/s/i/<business_short_id>/chat`。請使用回傳的完整 `chat_url`，不要自行拼接網域、路徑或商家 ID。不需要預填訊息時直接使用原網址；需要時加上 `text` query parameter：
+
+```js
+function buildChatLink(chatUrl, message = "") {
+  if (!chatUrl) return null;
+  if (!message) return chatUrl;
+  const url = new URL(chatUrl);
+  url.searchParams.set("text", message);
+  return url.toString();
+}
+
+const chatLink = buildChatLink(
+  connection.chat_url,
+  "請加入我的專案，邀請碼是 ABC-123",
+);
+```
+
+`text` 傳完整原始訊息，包含中文、空白或換行皆可；`URLSearchParams` 會處理 URL 編碼，不要先呼叫 `encodeURIComponent`。產生的連結只用於該次入口，不要覆寫保存的基礎 `chat_url`。
+
+開啟連結會進入商家對話（需要時先登入），`text` 只會預填到可編輯的輸入框，仍由使用者手動送出；點擊連結不會自動傳訊或執行業務操作。按鈕、QR code、預填內容及收到訊息後的業務處理由 fork 專案實作。
+
 ## 真實 HTTP 驗證
 
 本機路線以 `./start.command --no-browser` 實際啟動驗證。伺服器路線：前端與 MCP 完成 npm ci / build 後，設定 DATABASE_URL 指向有 CREATEDB 權限的**開發用** PostgreSQL，再執行：

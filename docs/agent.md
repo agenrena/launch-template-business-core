@@ -102,6 +102,8 @@ CORE_API_URL=http://127.0.0.1:8042/api/agent-api/ CORE_AGENT_KEY=<私下設定�
 
 連接狀態回應包含 `chat_url`：`connected` 時提供保存的商家公開聊天網址，其他狀態（含過期與中斷）回傳 `null`。等待授權時資料庫欄位留空，重新授權時清除舊網址，完成後保存新值。Core 直接使用 Agenrena 回傳的網址，不自行組合；手動查詢與掃碼完成共用驗證和保存邏輯。聊天網址的介面呈現、QR code 與預填訊息由 fork 專案實作。
 
+聊天連結與 `text` 預填訊息的組合範例見開發指引的[使用 Agenrena 聊天入口](development.md#使用-agenrena-聊天入口)。
+
 業務模板送通知：
 
 ```python
